@@ -4,6 +4,10 @@ Public, credential-free binary releases for compatible AIORS and SvxLink
 ARM64 builds. The source repositories remain private; this repository contains
 only deployment documentation and release tooling.
 
+See [Cross-Compile And Pi Installation](docs/CROSS_COMPILE_AND_PI_INSTALL.md)
+for the complete workflow after source changes and for fresh Raspberry Pi OS
+deployment.
+
 ## Release Assets
 
 Each `deploy-*` release contains:
