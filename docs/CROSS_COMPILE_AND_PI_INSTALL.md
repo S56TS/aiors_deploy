@@ -263,12 +263,14 @@ The current release requires a 64-bit ARM system. Raspberry Pi OS must report
 Using Raspberry Pi Imager:
 
 1. Select Raspberry Pi OS Lite 64-bit.
-2. Set the username to `frn`.
+2. Set the username to `cro`.
 3. Configure the hostname, locale, Wi-Fi, and SSH access.
 4. Write the image and boot the Pi.
 
-The integration installer currently uses `frn` as the AIORS service account,
-so that username is required for a fresh installation.
+The integration installer uses `cro` as the default AIORS service account, so
+that username is required for this fresh-install procedure. A different
+existing account can be selected by setting `AIORS_USER` when running the
+installer.
 
 ### 2. Update The Fresh System
 
