@@ -6,7 +6,7 @@ usage() {
   exit 2
 }
 
-[ "$#" -ge 3 ] && [ "$#" -le 4 ] || usage
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then usage; fi
 
 version=$1
 aiors_repo=$2
@@ -20,10 +20,10 @@ case "$version" in
     ;;
 esac
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repo_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
-aiors_repo=$(CDPATH= cd -- "$aiors_repo" && pwd)
-svxlink_repo=$(CDPATH= cd -- "$svxlink_repo" && pwd)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+repo_dir=$(CDPATH='' cd -- "$script_dir/.." && pwd)
+aiors_repo=$(CDPATH='' cd -- "$aiors_repo" && pwd)
+svxlink_repo=$(CDPATH='' cd -- "$svxlink_repo" && pwd)
 
 for tool in git make tar sha256sum sed awk install; do
   command -v "$tool" >/dev/null || {
@@ -62,9 +62,11 @@ for filename in \
   "$aiors_prebuilt/hw-1.0/aiorsctl" \
   "$aiors_prebuilt/hw-1.1/aiorsd" \
   "$aiors_prebuilt/hw-1.1/aiorsctl" \
-  "$aiors_prebuilt/runtime/lib/libgpiod.so.2" \
+  "$aiors_prebuilt/aiors-mqtt-agent" \
   "$aiors_repo/deploy/svxlink.conf" \
   "$aiors_repo/etc/aiors/aiors.cfg" \
+  "$aiors_repo/etc/aiors-mqtt/agent.conf" \
+  "$aiors_repo/etc/systemd/system/aiors-mqtt-agent.service" \
   "$aiors_repo/etc/udev/rules.d/99-aiors.rules" \
   "$aiors_repo/scripts/install_aiors_svxlink.sh" \
   "$aiors_repo/scripts/install_prebuilt_payload.sh" \
@@ -91,10 +93,43 @@ svxlink_arch=$(manifest_value "$svxlink_manifest" ARCH)
   echo "AIORS manifest architecture is '$aiors_arch', expected arm64" >&2
   exit 1
 }
+[ "$(manifest_value "$aiors_manifest" LIBGPIOD_SONAME)" = libgpiod.so.3 ] || {
+  echo "AIORS manifest must target Debian 13 libgpiod.so.3" >&2
+  exit 1
+}
+[ "$(manifest_value "$aiors_manifest" MQTT_AGENT)" = aiors-mqtt-agent ] || {
+  echo "AIORS manifest does not contain the MQTT agent" >&2
+  exit 1
+}
+[ "$(manifest_value "$aiors_manifest" MQTT_LIBMOSQUITTO_SONAME)" = libmosquitto.so.1 ] || {
+  echo "AIORS MQTT agent must target libmosquitto.so.1" >&2
+  exit 1
+}
+[ "$(manifest_value "$aiors_manifest" MQTT_SQLITE_SONAME)" = libsqlite3.so.0 ] || {
+  echo "AIORS MQTT agent must target libsqlite3.so.0" >&2
+  exit 1
+}
+[ "$(manifest_value "$aiors_manifest" MQTT_CJSON_SONAME)" = libcjson.so.1 ] || {
+  echo "AIORS MQTT agent must target libcjson.so.1" >&2
+  exit 1
+}
 [ "$svxlink_arch" = arm64 ] || {
   echo "SvxLink manifest architecture is '$svxlink_arch', expected arm64" >&2
   exit 1
 }
+[ "$(manifest_value "$svxlink_manifest" SYSTEMD_UNIT_DIR)" = /usr/lib/systemd/system ] || {
+  echo "SvxLink manifest is not usrmerge-safe for Debian 13" >&2
+  exit 1
+}
+[ "$(manifest_value "$svxlink_manifest" GPIOD_SONAME)" = libgpiod.so.3 ] || {
+  echo "SvxLink manifest must target Debian 13 libgpiod.so.3" >&2
+  exit 1
+}
+if tar -tzf "$svxlink_bundle" | sed 's#^\./##' |
+    grep -Eq '^(bin|sbin|lib)(/|$)'; then
+  echo "SvxLink archive contains a legacy top-level usrmerge path" >&2
+  exit 1
+fi
 
 dist_root="$repo_dir/dist"
 output_dir="$dist_root/$version"
@@ -120,6 +155,8 @@ mkdir -p \
   "$aiors_payload/prebuilt/arm64" \
   "$aiors_payload/deploy" \
   "$aiors_payload/etc/aiors" \
+  "$aiors_payload/etc/aiors-mqtt" \
+  "$aiors_payload/etc/systemd/system" \
   "$aiors_payload/etc/udev/rules.d" \
   "$aiors_payload/scripts"
 cp -R "$aiors_prebuilt/." "$aiors_payload/prebuilt/arm64/"
@@ -129,9 +166,14 @@ chmod 0755 \
   "$aiors_payload/prebuilt/arm64/hw-1.0/aiorsd" \
   "$aiors_payload/prebuilt/arm64/hw-1.0/aiorsctl" \
   "$aiors_payload/prebuilt/arm64/hw-1.1/aiorsd" \
-  "$aiors_payload/prebuilt/arm64/hw-1.1/aiorsctl"
+  "$aiors_payload/prebuilt/arm64/hw-1.1/aiorsctl" \
+  "$aiors_payload/prebuilt/arm64/aiors-mqtt-agent"
 install -m 0644 "$aiors_repo/deploy/svxlink.conf" "$aiors_payload/deploy/svxlink.conf"
 install -m 0644 "$aiors_repo/etc/aiors/aiors.cfg" "$aiors_payload/etc/aiors/aiors.cfg"
+install -m 0644 "$aiors_repo/etc/aiors-mqtt/agent.conf" \
+  "$aiors_payload/etc/aiors-mqtt/agent.conf"
+install -m 0644 "$aiors_repo/etc/systemd/system/aiors-mqtt-agent.service" \
+  "$aiors_payload/etc/systemd/system/aiors-mqtt-agent.service"
 install -m 0644 "$aiors_repo/etc/udev/rules.d/99-aiors.rules" \
   "$aiors_payload/etc/udev/rules.d/99-aiors.rules"
 install -m 0755 "$aiors_repo/scripts/install_aiors_svxlink.sh" \
@@ -165,13 +207,22 @@ AIORS_VERSION=$(manifest_value "$aiors_manifest" AIORS_VERSION)
 AIORS_SOURCE_COMMIT=$(manifest_value "$aiors_manifest" SOURCE_COMMIT)
 AIORS_SOURCE_DIRTY=$aiors_source_dirty
 AIORS_HW_VERSIONS=1.0,1.1
-AIORS_PAYLOAD_LAYOUT=1
+AIORS_PAYLOAD_LAYOUT=2
+AIORS_LIBGPIOD_SONAME=$(manifest_value "$aiors_manifest" LIBGPIOD_SONAME)
+AIORS_MQTT_AGENT=$(manifest_value "$aiors_manifest" MQTT_AGENT)
+AIORS_MQTT_LIBMOSQUITTO_SONAME=$(manifest_value "$aiors_manifest" MQTT_LIBMOSQUITTO_SONAME)
+AIORS_MQTT_SQLITE_SONAME=$(manifest_value "$aiors_manifest" MQTT_SQLITE_SONAME)
+AIORS_MQTT_CJSON_SONAME=$(manifest_value "$aiors_manifest" MQTT_CJSON_SONAME)
 AIORS_MANIFEST_SHA256=$aiors_manifest_sha
 SVXLINK_ARCHIVE=svxlink-arm64-rootfs.tar.gz
 SVXLINK_ARCHIVE_SHA256=$svxlink_archive_sha
 SVXLINK_SOURCE_COMMIT=$(manifest_value "$svxlink_manifest" SOURCE_COMMIT)
 SVXLINK_SOURCE_DESCRIBE=$(manifest_value "$svxlink_manifest" SOURCE_DESCRIBE)
 SVXLINK_SOURCE_DIRTY=$(manifest_value "$svxlink_manifest" SOURCE_DIRTY)
+SVXLINK_GPIOD_SONAME=$(manifest_value "$svxlink_manifest" GPIOD_SONAME)
+SVXLINK_BUNDLED_JSONCPP=$(manifest_value "$svxlink_manifest" BUNDLED_JSONCPP)
+SVXLINK_BUNDLED_RUNTIME_DIR=$(manifest_value "$svxlink_manifest" BUNDLED_RUNTIME_DIR)
+SVXLINK_SYSTEMD_UNIT_DIR=$(manifest_value "$svxlink_manifest" SYSTEMD_UNIT_DIR)
 SVXLINK_MANIFEST_SHA256=$svxlink_manifest_sha
 EOF
 

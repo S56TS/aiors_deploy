@@ -1,7 +1,7 @@
 # AIORS + SvxLink Pre-Release Testing Procedure
 
-Document revision: 1.1  
-Last updated: 25 August 2026
+Document revision: 1.2
+Last updated: 13 September 2026
 
 ## Purpose
 
@@ -13,7 +13,7 @@ and verify the complete installation before committing the source changes.
 The examples use:
 
 - Windows deployment repository: `C:\Users\sound\Documents\GitHub\aiors_bsp\.git\aiors_deploy`
-- Raspberry Pi account: `cro`
+- Raspberry Pi account: `aiors`
 - Raspberry Pi address: `192.168.0.19`
 - AIORS hardware version: `1.0`
 - Example test version: `deploy-test-v1.0.2-1`
@@ -28,12 +28,12 @@ every command:
 
 ```text
 PS C:\...>       Windows PowerShell on the Windows PC
-cro@cro:~ $      Bash shell on the Raspberry Pi
+aiors@aiors:~ $      Bash shell on the Raspberry Pi
 ```
 
 Commands containing Windows paths such as `.\dist\...` must run in Windows
-PowerShell. Commands containing Linux paths such as `/home/cro/...` run on the
-Pi. Do not type the PowerShell `scp` upload command at a `cro@cro:~ $` prompt.
+PowerShell. Commands containing Linux paths such as `/home/aiors/...` run on the
+Pi. Do not type the PowerShell `scp` upload command at an `aiors@aiors:~ $` prompt.
 If you are connected to the Pi when a Windows command is required, run `exit`
 first to return to Windows PowerShell.
 
@@ -130,7 +130,7 @@ payload layout must be `2`, and the MQTT agent must be listed.
 ## 4. Copy The Test To The Raspberry Pi
 
 **Run the upload commands in this section on the Windows PC in PowerShell
-(`PS C:\...>`).** If your prompt currently reads `cro@cro:~ $`, run `exit`
+(`PS C:\...>`).** If your prompt currently reads `aiors@aiors:~ $`, run `exit`
 before continuing.
 
 Confirm that PowerShell is in the deployment repository and that the local
@@ -147,7 +147,7 @@ through 3 first. The `scp` source is on the Windows PC, not on the Pi.
 Confirm SSH access:
 
 ```powershell
-ssh cro@192.168.0.19 "uname -m; hostname"
+ssh aiors@192.168.0.19 "uname -m; hostname"
 ```
 
 The architecture must be `aarch64`.
@@ -155,13 +155,13 @@ The architecture must be `aarch64`.
 Create the remote test directory:
 
 ```powershell
-ssh cro@192.168.0.19 "mkdir -p /home/cro/aiors-test"
+ssh aiors@192.168.0.19 "mkdir -p /home/aiors/aiors-test"
 ```
 
 Copy the complete release directory:
 
 ```powershell
-scp.exe -r "C:/Users/sound/Documents/GitHub/aiors_bsp/.git/aiors_deploy/dist/deploy-test-v1.0.2-1" cro@192.168.0.19:/home/cro/aiors-test/
+scp.exe -r "C:/Users/sound/Documents/GitHub/aiors_bsp/.git/aiors_deploy/dist/deploy-test-v1.0.2-1" aiors@192.168.0.19:/home/aiors/aiors-test/
 ```
 
 The explicit absolute path and forward slashes are intentional. They prevent
@@ -171,27 +171,27 @@ Copy the current local installer. This is important when the installer itself
 contains uncommitted changes:
 
 ```powershell
-scp.exe "C:/Users/sound/Documents/GitHub/aiors_bsp/.git/aiors_deploy/install.sh" cro@192.168.0.19:/home/cro/aiors-test/install.sh
+scp.exe "C:/Users/sound/Documents/GitHub/aiors_bsp/.git/aiors_deploy/install.sh" aiors@192.168.0.19:/home/aiors/aiors-test/install.sh
 ```
 
 Connect to the Pi:
 
 ```powershell
-ssh cro@192.168.0.19
+ssh aiors@192.168.0.19
 ```
 
-After connecting, the prompt changes to `cro@cro:~ $`.
+After connecting, the prompt changes to `aiors@aiors:~ $`.
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).** Verify the copied files:
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).** Verify the copied files:
 
 ```bash
-ls -lh /home/cro/aiors-test/deploy-test-v1.0.2-1
-ls -l /home/cro/aiors-test/install.sh
+ls -lh /home/aiors/aiors-test/deploy-test-v1.0.2-1
+ls -l /home/aiors/aiors-test/install.sh
 ```
 
 ## 5. Back Up And Review The Pi Configuration
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Create an explicit backup of the locally maintained SvxLink configuration:
 
@@ -239,24 +239,24 @@ sudo test -r /etc/svxlink/svxlink.d/ModuleFrn.conf && \
 
 ## 6. Install The Local Test Deployment
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Make the copied installer executable:
 
 ```bash
-chmod +x /home/cro/aiors-test/install.sh
+chmod +x /home/aiors/aiors-test/install.sh
 ```
 
 Install the signed local assets. `ALLOW_DIRTY_RELEASE=1` is required because
 the source changes have not been committed:
 
 ```bash
-DEPLOY_ASSET_DIR="/home/cro/aiors-test/deploy-test-v1.0.2-1" \
+DEPLOY_ASSET_DIR="/home/aiors/aiors-test/deploy-test-v1.0.2-1" \
 DEPLOY_VERSION="deploy-test-v1.0.2-1" \
 AIORS_HW_VERSION="1.0" \
 ALLOW_DIRTY_RELEASE=1 \
-  bash "/home/cro/aiors-test/install.sh" 2>&1 | \
-  tee "/home/cro/aiors-test/deploy-test-v1.0.2-1-install.log"
+  bash "/home/aiors/aiors-test/install.sh" 2>&1 | \
+  tee "/home/aiors/aiors-test/deploy-test-v1.0.2-1-install.log"
 ```
 
 The installation must finish with:
@@ -273,7 +273,7 @@ a failed test and must be investigated before continuing.
 
 ## 7. Reboot
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 ```bash
 sudo reboot
@@ -284,12 +284,12 @@ Wait for the Pi to return. The SSH session will close during reboot.
 **Run on: Windows PC in PowerShell (`PS C:\...>`).** Reconnect:
 
 ```powershell
-ssh cro@192.168.0.19
+ssh aiors@192.168.0.19
 ```
 
 ## 8. Verify Versions And Services
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Confirm the architecture and installed versions:
 
@@ -320,7 +320,7 @@ For the default test configuration, `disabled` and `inactive` are expected.
 
 ## 9. Verify Sound And HID Names
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Check the physical sound cards and stable ALSA aliases:
 
@@ -367,7 +367,7 @@ done
 
 ## 10. Test CM108 PTT With Devcal
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Make the transmitter RF-safe before continuing. Stop SvxLink so `devcal` can
 open the audio and HID devices:
@@ -407,7 +407,7 @@ systemctl status svxlink --no-pager -l
 
 ## 11. Verify AIORS Diagnostics
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Run the same commands through the SvxLink service account used by production:
 
@@ -424,7 +424,7 @@ faults must be explained before accepting the release.
 
 ## 12. Verify SvxLink And FRN
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Inspect the startup log:
 
@@ -466,7 +466,7 @@ channels.
 
 ## 13. Verify Statistics Files
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 Check the snapshot, persistent totals, and history:
 
@@ -490,7 +490,7 @@ fault information.
 
 ## 14. Inspect Current-Boot Logs
 
-**Run on: Raspberry Pi (`cro@cro:~ $`).**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 ```bash
 sudo journalctl -b -u aiorsd -u svxlink --no-pager -n 300
@@ -503,21 +503,21 @@ AIORS or SvxLink from starting.
 Record useful status information in the test directory:
 
 ```bash
-mkdir -p "/home/cro/aiors-test/results/deploy-test-v1.0.2-1"
+mkdir -p "/home/aiors/aiors-test/results/deploy-test-v1.0.2-1"
 systemctl status aiorsd svxlink --no-pager -l \
-  > "/home/cro/aiors-test/results/deploy-test-v1.0.2-1/service-status.txt"
+  > "/home/aiors/aiors-test/results/deploy-test-v1.0.2-1/service-status.txt"
 sudo journalctl -b -u aiorsd -u svxlink --no-pager \
-  > "/home/cro/aiors-test/results/deploy-test-v1.0.2-1/radio-services-journal.txt"
+  > "/home/aiors/aiors-test/results/deploy-test-v1.0.2-1/radio-services-journal.txt"
 sudo cp /var/log/svxlink \
-  "/home/cro/aiors-test/results/deploy-test-v1.0.2-1/svxlink.log"
+  "/home/aiors/aiors-test/results/deploy-test-v1.0.2-1/svxlink.log"
 sudo cp /var/lib/svxlink/svxstats_snapshot.txt \
-  "/home/cro/aiors-test/results/deploy-test-v1.0.2-1/svxstats_snapshot.txt"
-sudo chown -R cro:cro "/home/cro/aiors-test/results/deploy-test-v1.0.2-1"
+  "/home/aiors/aiors-test/results/deploy-test-v1.0.2-1/svxstats_snapshot.txt"
+sudo chown -R aiors:aiors "/home/aiors/aiors-test/results/deploy-test-v1.0.2-1"
 ```
 
 ## 15. Optional Network-Outage Test
 
-**Run on: Raspberry Pi (`cro@cro:~ $`) using local console access.**
+**Run on: Raspberry Pi (`aiors@aiors:~ $`) using local console access.**
 
 Perform this only when local access to the Pi is available because SSH will be
 lost. Disconnect Ethernet briefly, reconnect it, and then confirm:
@@ -585,7 +585,7 @@ Pi installations must omit `ALLOW_DIRTY_RELEASE=1`.
 Keep the test package and captured logs. Record the failing command and exact
 output.
 
-**Run these checks on: Raspberry Pi (`cro@cro:~ $`).**
+**Run these checks on: Raspberry Pi (`aiors@aiors:~ $`).**
 
 ```bash
 systemctl status aiorsd svxlink --no-pager -l

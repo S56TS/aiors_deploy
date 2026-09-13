@@ -8,6 +8,10 @@ See [Cross-Compile And Pi Installation](docs/CROSS_COMPILE_AND_PI_INSTALL.md)
 for the complete workflow after source changes and for fresh Raspberry Pi OS
 deployment.
 
+See [MQTT Telemetry And Server Setup](docs/MQTT_TELEMETRY_AND_SERVER.md) for
+the optional isolated telemetry agent, topic/payload contract, private broker
+configuration, remote-command safety model, and FRN server setup.
+
 ## Release Assets
 
 Each `deploy-*` release contains:
@@ -20,11 +24,16 @@ SHA256SUMS
 SHA256SUMS.minisig
 ```
 
-The AIORS archive contains binaries for hardware 1.0 and 1.1, the libgpiod v1
-runtime, configuration, and integration scripts. The SvxLink archive contains
+The AIORS archive contains binaries for hardware 1.0 and 1.1 built for Debian
+13's native libgpiod v2 runtime, the hardware-independent
+`aiors-mqtt-agent`, plus configuration and integration scripts. The MQTT agent
+is installed disabled by default and has no hard service dependency on AIORS
+or SvxLink.
+The SvxLink archive contains
 the complete staged ARM64 installation, including modules, Tcl handlers,
-libraries, and systemd units. Neither archive requires access to a private
-source repository.
+libraries, and systemd units under Debian 13's usrmerged `/usr` tree. Its
+private runtime directory carries the exact JSONCPP ABI used by the build.
+Neither archive requires access to a private source repository.
 
 ## Install On A Raspberry Pi
 
@@ -39,14 +48,24 @@ bash install.sh
 
 The bootstrap downloads the latest published release over anonymous HTTPS,
 verifies the pinned Minisign signature before trusting `SHA256SUMS`, checks both
-archives, and then runs the full AIORS/SvxLink integration installer. No GitHub
-credentials or deploy key are used on the Pi.
+archives, rejects incompatible Debian runtime layouts, and then runs the full
+AIORS/SvxLink integration installer. The payload stage checks every installed
+ELF file for unresolved shared libraries. No GitHub credentials or deploy key
+are used on the Pi.
+
+The default AIORS service/login account is `aiors`, and it must already exist
+on the Pi. An existing installation with another account can set
+`AIORS_USER=<existing-user>` when invoking `install.sh`.
 
 Pin a release or select the AIORS hardware revision explicitly when needed:
 
 ```sh
 DEPLOY_VERSION=deploy-v1.0.0 AIORS_HW_VERSION=1.1 bash install.sh
 ```
+
+For a fresh FRN node, keep credentials outside this public repository and pass
+the locally copied configuration as `FRN_CONFIG_PATH=/path/ModuleFrn.conf`.
+Existing FRN configuration is preserved when that variable is omitted.
 
 An existing installation is queried for its hardware revision. A fresh
 interactive installation asks for hardware `1.0` or `1.1` when the environment

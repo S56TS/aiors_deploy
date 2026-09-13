@@ -112,7 +112,27 @@ done
 manifest="$WORK_DIR/deployment-manifest.env"
 [[ "$(manifest_value "$manifest" ARTIFACT_FORMAT)" == "1" ]] || die "unsupported artifact format"
 [[ "$(manifest_value "$manifest" ARCH)" == "arm64" ]] || die "release architecture is not arm64"
-[[ "$(manifest_value "$manifest" AIORS_PAYLOAD_LAYOUT)" == "1" ]] || die "unsupported AIORS payload layout"
+aiors_payload_layout="$(manifest_value "$manifest" AIORS_PAYLOAD_LAYOUT)"
+case "$aiors_payload_layout" in
+  1) ;;
+  2)
+    [[ "$(manifest_value "$manifest" AIORS_MQTT_AGENT)" == "aiors-mqtt-agent" ]] ||
+      die "release does not contain the AIORS MQTT agent"
+    [[ "$(manifest_value "$manifest" AIORS_MQTT_LIBMOSQUITTO_SONAME)" == "libmosquitto.so.1" ]] ||
+      die "release has an unsupported Mosquitto ABI"
+    [[ "$(manifest_value "$manifest" AIORS_MQTT_SQLITE_SONAME)" == "libsqlite3.so.0" ]] ||
+      die "release has an unsupported SQLite ABI"
+    [[ "$(manifest_value "$manifest" AIORS_MQTT_CJSON_SONAME)" == "libcjson.so.1" ]] ||
+      die "release has an unsupported cJSON ABI"
+    ;;
+  *) die "unsupported AIORS payload layout" ;;
+esac
+[[ "$(manifest_value "$manifest" AIORS_LIBGPIOD_SONAME)" == "libgpiod.so.3" ]] ||
+  die "release does not target Debian 13 libgpiod v2"
+[[ "$(manifest_value "$manifest" SVXLINK_SYSTEMD_UNIT_DIR)" == "/usr/lib/systemd/system" ]] ||
+  die "release does not use the Debian 13 usrmerged systemd unit path"
+[[ "$(manifest_value "$manifest" SVXLINK_GPIOD_SONAME)" == "libgpiod.so.3" ]] ||
+  die "SvxLink release does not target Debian 13 libgpiod v2"
 manifest_version="$(manifest_value "$manifest" DEPLOYMENT_VERSION)"
 if [[ "$DEPLOY_VERSION" != "latest" && "$manifest_version" != "$DEPLOY_VERSION" ]]; then
   die "release version mismatch: requested $DEPLOY_VERSION, received $manifest_version"
@@ -126,6 +146,10 @@ fi
 
 archive_is_safe "$WORK_DIR/aiors-arm64.tar.gz" || die "AIORS archive contains an unsafe path"
 archive_is_safe "$WORK_DIR/svxlink-arm64-rootfs.tar.gz" || die "SvxLink archive contains an unsafe path"
+if tar -tzf "$WORK_DIR/svxlink-arm64-rootfs.tar.gz" | sed 's#^\./##' |
+    grep -Eq '^(bin|sbin|lib)(/|$)'; then
+  die "SvxLink archive contains a legacy top-level usrmerge path"
+fi
 
 if [[ "$VERIFY_ONLY" == "1" ]]; then
   log "Release verification completed"
@@ -147,6 +171,12 @@ cp "$manifest" "$payload_dir/deployment-manifest.env"
 log "Running AIORS and SvxLink binary deployment"
 RELEASE_PAYLOAD_DIR="$payload_dir" \
 AIORS_HW_VERSION="${AIORS_HW_VERSION:-}" \
+FRN_CONFIG_PATH="${FRN_CONFIG_PATH:-}" \
+MQTT_CONFIG_PATH="${MQTT_CONFIG_PATH:-}" \
+MQTT_CA_PATH="${MQTT_CA_PATH:-}" \
+MQTT_CERT_PATH="${MQTT_CERT_PATH:-}" \
+MQTT_KEY_PATH="${MQTT_KEY_PATH:-}" \
+MQTT_PASSWORD_PATH="${MQTT_PASSWORD_PATH:-}" \
   bash "$payload_dir/aiors/scripts/install_aiors_svxlink.sh"
 
 log "Deployment completed"

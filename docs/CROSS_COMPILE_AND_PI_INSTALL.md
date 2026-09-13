@@ -41,7 +41,7 @@ sudo apt update
 sudo apt install -y \
   build-essential make cmake pkg-config dpkg-dev \
   gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-  libgpiod-dev:arm64 minisign
+  debian-archive-keyring minisign
 ```
 
 Create the SvxLink ARM64 dependency sysroot once, and repeat this step when the
@@ -51,6 +51,10 @@ toolchain or dependency setup changes:
 cd /mnt/c/Users/sound/Documents/GitHub/svxlink
 make sysroot-arm64
 ```
+
+AIORS creates its own small Debian 13 ARM64 libgpiod v2 sysroot automatically
+during `make prebuilt-arm64`. It is intentionally separate from Ubuntu's
+multiarch packages so the GPIO ABI matches the Raspberry Pi target.
 
 The password-protected Minisign private key is stored outside every repository:
 
@@ -138,7 +142,7 @@ In Windows PowerShell:
 Set-Location 'C:\Users\sound\Documents\GitHub\aiors_bsp\.git\aiors_deploy'
 
 .\scripts\New-DeploymentRelease.ps1 `
-  -Version deploy-v1.0.1 `
+  -Version deploy-v1.0.2 `
   -Rebuild `
   -MinisignSecretKey "$env:USERPROFILE\.config\aiors-deploy\minisign.key"
 ```
@@ -158,7 +162,7 @@ The command performs these operations:
 ### 5. Verify The Release
 
 ```powershell
-$release = '.\dist\deploy-v1.0.1'
+$release = '.\dist\deploy-v1.0.2'
 
 Get-ChildItem $release
 Get-Content "$release\deployment-manifest.env" |
@@ -185,7 +189,7 @@ SVXLINK_SOURCE_DIRTY=0
 Verify the signature and checksums in WSL:
 
 ```sh
-cd /mnt/c/Users/sound/Documents/GitHub/aiors_bsp/.git/aiors_deploy/dist/deploy-v1.0.1
+cd /mnt/c/Users/sound/Documents/GitHub/aiors_bsp/.git/aiors_deploy/dist/deploy-v1.0.2
 minisign -Vm SHA256SUMS \
   -p /mnt/c/Users/sound/.config/aiors-deploy/minisign.pub \
   -x SHA256SUMS.minisig
@@ -234,7 +238,7 @@ Then package and sign without `-Rebuild`:
 
 ```powershell
 .\scripts\New-DeploymentRelease.ps1 `
-  -Version deploy-v1.0.1 `
+  -Version deploy-v1.0.2 `
   -MinisignSecretKey "$env:USERPROFILE\.config\aiors-deploy\minisign.key"
 ```
 
@@ -263,11 +267,11 @@ The current release requires a 64-bit ARM system. Raspberry Pi OS must report
 Using Raspberry Pi Imager:
 
 1. Select Raspberry Pi OS Lite 64-bit.
-2. Set the username to `cro`.
-3. Configure the hostname, locale, Wi-Fi, and SSH access.
+2. Set the username to `aiors`.
+3. Set the hostname to `aiors`, then configure the locale, Wi-Fi, and SSH access.
 4. Write the image and boot the Pi.
 
-The integration installer uses `cro` as the default AIORS service account, so
+The integration installer uses `aiors` as the default AIORS service account, so
 that username is required for this fresh-install procedure. A different
 existing account can be selected by setting `AIORS_USER` when running the
 installer.
@@ -299,16 +303,29 @@ less install.sh
 
 ### 4. Install A Pinned Release
 
+FRN login data and `RUN_CMD_SECRET` must not be stored in the public deployment
+repository. For a fresh FRN node, first copy a private `ModuleFrn.conf` that
+contains a `[ModuleFrn]` section to the Pi, for example:
+
+```powershell
+scp .\ModuleFrn.conf aiors@aiors:/home/aiors/ModuleFrn.conf
+```
+
 For AIORS hardware 1.1:
 
 ```sh
 set -o pipefail
-DEPLOY_VERSION=deploy-v1.0.1 AIORS_HW_VERSION=1.1 \
-  bash install.sh 2>&1 | tee ~/aiors-deploy-v1.0.1.log
+DEPLOY_VERSION=deploy-v1.0.2 AIORS_HW_VERSION=1.1 \
+FRN_CONFIG_PATH=/home/aiors/ModuleFrn.conf \
+  bash install.sh 2>&1 | tee ~/aiors-deploy-v1.0.2.log
 ```
 
 For hardware 1.0, use `AIORS_HW_VERSION=1.0`. On later updates, the installer
 can normally detect the hardware revision from the existing installation.
+The private FRN file is installed as `root:svxlink` mode `0640`. On updates,
+omit `FRN_CONFIG_PATH` to preserve the installed FRN configuration. If FRN is
+not used, omit the variable; the installer warns when the packaged example
+configuration is still present.
 
 The bootstrap performs these checks before installation:
 
@@ -317,10 +334,22 @@ The bootstrap performs these checks before installation:
 3. Verifies all SHA-256 checksums.
 4. Rejects unsupported architectures, unsafe archive paths, version mismatches,
    and dirty release builds.
+5. Rejects a legacy top-level `/lib`, `/bin`, or `/sbin` archive layout that is
+   unsafe on Debian 13's usrmerged filesystem.
+6. Requires both AIORS and SvxLink to target Debian 13's native
+   `libgpiod.so.3` ABI.
 
 The integration stage installs both binary payloads and configures AIORS,
 SvxLink, systemd ordering, groups, UART, I2C, USB audio, CM108 HID names,
 uhubctl permissions, ALSA aliases, sound files, and statistics paths.
+It also installs the isolated `aiors-mqtt-agent` binary, configuration
+template, low-privilege service account, and systemd unit. MQTT is disabled by
+default and has no hard dependency relationship with either radio service.
+Before services are enabled, it checks every installed AIORS and SvxLink ELF
+file, including logic and module plugins, for unresolved shared libraries.
+It also installs bounded log rotation: eight weekly service-log generations
+and 30 daily compressed generations of `svxstats_history.log`. Snapshot and
+totals files are updated in place and are not rotated.
 
 ### 5. Reboot
 
@@ -351,10 +380,14 @@ Check audio and hardware aliases:
 ```sh
 aplay -l
 arecord -l
-aplay -L | grep -E '^aiors_usc_a|^aiors_usc_b'
-ls -l /dev/hidraw-usc-* 2>/dev/null
+aplay -L | grep -E '^sound_usc_a|^sound_usc_b'
+ls -l /dev/hidraw_usc_* 2>/dev/null
 i2cdetect -l
 ```
+
+The stable CM108 GPIO/PTT aliases are `/dev/hidraw_usc_a` and
+`/dev/hidraw_usc_b`. The corresponding ALSA PCM/control aliases are
+`sound_usc_a` and `sound_usc_b`.
 
 After SvxLink has sampled AIORS diagnostics, check the statistics files:
 
@@ -386,8 +419,22 @@ sudo reboot
 ```
 
 The installer preserves existing AIORS configuration where appropriate, backs
-up the installed payload, refreshes the SvxLink configuration, and detects the
-stored AIORS hardware revision.
+up the installed payload, and detects the stored AIORS hardware revision. It
+automatically updates `/etc/svxlink/svxlink.conf` only when that file still
+matches the previously installed AIORS template. A locally modified config is
+preserved and the new template is written to:
+
+```text
+/usr/local/share/aiors/svxlink.conf
+```
+
+The optional `aiors-mqtt-agent` binary is updated at the same time. Existing
+`/etc/aiors-mqtt/agent.conf` and credential files are preserved. MQTT remains
+disabled until `[agent] ENABLED=1`; see
+[MQTT Telemetry And Server Setup](MQTT_TELEMETRY_AND_SERVER.md).
+
+If payload validation fails, newly installed payload files are removed and the
+previous files are restored from `/var/backups/aiors-svxlink/`.
 
 ## Common Failures
 
