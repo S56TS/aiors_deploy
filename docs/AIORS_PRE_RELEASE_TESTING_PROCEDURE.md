@@ -1,6 +1,6 @@
 # AIORS + SvxLink Pre-Release Testing Procedure
 
-Document revision: 1.2
+Document revision: 1.3
 Last updated: 13 September 2026
 
 ## Purpose
@@ -64,6 +64,15 @@ Allow scripts only in the current PowerShell process:
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
+
+Run this in the **same PowerShell terminal** where you will run
+`New-DeploymentRelease.ps1`. It needs no administrator rights and applies only
+until that terminal closes. Repeat it whenever you open a new PowerShell terminal.
+
+If the release command fails with **"running scripts is disabled on this system"**
+(`PSSecurityException` / `UnauthorizedAccess`), run the command above, then rerun
+the complete deployment command from step 2 with all its options. PowerShell
+blocked the script before the build started.
 
 Confirm that the release script and signing key exist:
 
@@ -298,7 +307,12 @@ uname -m
 /usr/local/bin/aiorsctl version
 /usr/bin/svxlink --version
 /usr/local/sbin/aiors-mqtt-agent --version
+wg --version
 ```
+
+This verifies that WireGuard tooling is installed. No tunnel should be enabled
+unless a deployment-specific `/etc/wireguard/<interface>.conf` has been
+installed intentionally.
 
 Confirm the two radio services are enabled and active:
 
@@ -328,6 +342,8 @@ Check the physical sound cards and stable ALSA aliases:
 aplay -l
 arecord -l
 aplay -L | grep -E '^sound_usc_[ab]'
+amixer -c SOUND_USC_A sget 'Auto Gain Control'
+amixer -c SOUND_USC_B sget 'Auto Gain Control'
 ```
 
 Expected card IDs and PCM/control aliases:
@@ -338,6 +354,8 @@ SOUND_USC_B
 sound_usc_a
 sound_usc_b
 ```
+
+Both `Auto Gain Control` queries must report `[off]`.
 
 Check the CM108 HID aliases and permissions:
 

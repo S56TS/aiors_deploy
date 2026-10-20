@@ -53,6 +53,15 @@ AIORS/SvxLink integration installer. The payload stage checks every installed
 ELF file for unresolved shared libraries. No GitHub credentials or deploy key
 are used on the Pi.
 
+The integration installer also installs `wireguard-tools` (`wg` and
+`wg-quick`). It does not create VPN keys, install a tunnel configuration, or
+enable a WireGuard interface automatically.
+
+For both stable USB cards, `SOUND_USC_A` and `SOUND_USC_B`, deployment disables
+the microphone `Auto Gain Control` switch and stores the ALSA mixer state. A
+bounded boot service reapplies the setting before SvxLink starts and does not
+block the radio service when a USB card is absent.
+
 The default AIORS service/login account is `aiors`, and it must already exist
 on the Pi. An existing installation with another account can set
 `AIORS_USER=<existing-user>` when invoking `install.sh`.

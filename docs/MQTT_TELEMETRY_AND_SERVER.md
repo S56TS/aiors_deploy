@@ -1,5 +1,8 @@
 # AIORS + SvxLink MQTT Telemetry
 
+Software identity reporting updated on 20 October 2026. Protocol schema
+numbers and hardware revisions are unchanged.
+
 ## Architecture
 
 `aiors-mqtt-agent` is a third, independent service. It is not linked into
@@ -71,6 +74,10 @@ Example envelope:
   "source": "/var/lib/svxlink/svxstats_snapshot.txt",
   "metrics": {
     "stats_schema": 3,
+    "aiors_diagnostics_version": "4",
+    "aiors_software_version": "4f165e5-dirty",
+    "aiors_software_revision": "4f165e5-dirty",
+    "aiors_hardware_version": "1.0",
     "ts_unix_s": 1787574600,
     "aiors_overall_status": "ok",
     "aiors_psu_a_input_voltage_v": 13.72,
@@ -100,6 +107,50 @@ Every field in the snapshot is sent. The current snapshot groups are:
 The authoritative field list is the `metrics` object. Consumers should ignore
 unknown fields so a future `stats_schema` can add diagnostics without breaking
 ingestion.
+
+## Software and hardware identity
+
+AIORS software versions are build-time Git descriptions, such as `4f165e5` or
+`4f165e5-dirty`. The separately maintained release number has been removed.
+Descriptions can also be tag-based; `-dirty` indicates uncommitted build
+changes. `unknown` means Git metadata was unavailable and no `GIT_VERSION`
+override was supplied. Treat these identifiers as opaque strings, including
+hashes containing only digits; do not parse or order them as release numbers.
+
+- MQTT status retains `agent_version` and `agent_revision`; both contain the
+  MQTT agent's Git description.
+- Telemetry retains `metrics.aiors_software_version` and
+  `metrics.aiors_software_revision`; both contain the running AIORS daemon's
+  Git description, sampled by SvxLink.
+- `metrics.aiors_hardware_version` remains `"1.0"` or `"1.1"`.
+- SvxLink's own `svxlink_software_version` and `svxlink_software_revision`
+  fields retain their existing formats.
+
+The agent and daemon are separate binaries and can report different revisions
+after partial upgrades. Unavailable telemetry identity values become JSON
+`null` through the normal `na` conversion. Available identity values remain
+JSON strings.
+
+Use `aiorsd --version` and `aiorsctl --version` to identify the installed
+binaries, `aiorsctl version` to query the running daemon, and
+`aiors-mqtt-agent --version` to identify the independent agent. Example output:
+
+```text
+aiorsd 4f165e5-dirty (hw 1.0)
+aiorsctl 4f165e5-dirty (hw 1.0)
+aiorsd 4f165e5-dirty (hw 1.0)
+aiors-mqtt-agent 4f165e5-dirty
+```
+
+FRN `get version` forwards the daemon identity alongside SvxLink's own version.
+The agent has no hardware suffix. Commit source changes before release builds;
+the commit alone does not identify all changes in a dirty build.
+
+MQTT envelope `schema=1`, topic prefix `frn/aiors/v1`, SvxLink snapshot
+`stats_schema=3`, and AIORS `diagnostics_version=4` are unchanged. MQTT exports
+the last field as `"aiors_diagnostics_version": "4"` because keys containing
+`version` remain strings. No topic or schema migration is required for this
+software identity change.
 
 ## Events
 

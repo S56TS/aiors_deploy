@@ -341,7 +341,12 @@ The bootstrap performs these checks before installation:
 
 The integration stage installs both binary payloads and configures AIORS,
 SvxLink, systemd ordering, groups, UART, I2C, USB audio, CM108 HID names,
-uhubctl permissions, ALSA aliases, sound files, and statistics paths.
+uhubctl permissions, ALSA aliases, sound files, statistics paths, and the
+WireGuard `wg`/`wg-quick` tools. WireGuard keys, tunnel configuration, and
+interface activation remain separate deployment-specific steps.
+It also disables microphone `Auto Gain Control` on `SOUND_USC_A` and
+`SOUND_USC_B`, stores the ALSA state, and installs a bounded boot-time service
+that reapplies the setting before SvxLink starts.
 It also installs the isolated `aiors-mqtt-agent` binary, configuration
 template, low-privilege service account, and systemd unit. MQTT is disabled by
 default and has no hard dependency relationship with either radio service.
@@ -383,11 +388,14 @@ arecord -l
 aplay -L | grep -E '^sound_usc_a|^sound_usc_b'
 ls -l /dev/hidraw_usc_* 2>/dev/null
 i2cdetect -l
+amixer -c SOUND_USC_A sget 'Auto Gain Control'
+amixer -c SOUND_USC_B sget 'Auto Gain Control'
 ```
 
 The stable CM108 GPIO/PTT aliases are `/dev/hidraw_usc_a` and
 `/dev/hidraw_usc_b`. The corresponding ALSA PCM/control aliases are
 `sound_usc_a` and `sound_usc_b`.
+Both mixer queries must report `[off]`.
 
 After SvxLink has sampled AIORS diagnostics, check the statistics files:
 
