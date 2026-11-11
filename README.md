@@ -80,15 +80,21 @@ Rebuild the deployment release to include the updated installer and its
 `scripts/wireguard-install-policy.sh` helper. This policy does not change the
 behaviour of previously built release archives.
 
-The updated installer verifies CM108 identity before audio re-enumeration and
-refuses to reset a USB device containing a network interface. Physical port
-power cycling is blocked when Ethernet shares the hub; this also applies to
-the updated daemon's recovery and CLI power-off commands. USB udev events are
-limited to the audio devices and exact hub. aiorsd feeds the SYSTEM hardware
-watchdog during initialization for at most 90 seconds before handing control
-to its runtime loop. These protections require a newly packaged release with
-the rebuilt daemon; they do not remove risks from other package hooks or the
-interval while aiorsd is stopped.
+Before dependency installation or binary replacement, the integration installer
+requires the known AIORS LAN9514 layout: hub `0424:9514` at `1-1`, Ethernet
+`0424:ec00` on port 1 with an enumerated network interface, and CM108 sound
+cards `0d8c:0012` on ports 2/3. Unknown or unsafe layouts and missing devices
+fail preflight. This relies on the known board wiring; enumeration does not
+measure electrical power isolation.
+
+The daemon retains physical audio/radio power cycling on ports 2/3 beside the
+LAN9514 Ethernet on port 1, including recovery when a sound card disappears.
+Unexpected network branches and unknown occupied audio ports are refused.
+USB udev events remain limited to the audio devices and exact hub. aiorsd feeds
+the SYSTEM hardware watchdog during initialization for at most 90 seconds before
+handing control to its runtime loop. Repackage the release with the rebuilt
+daemon to include these changes. Other package hooks and the interval while
+aiorsd is stopped can still affect connectivity.
 
 For both stable USB cards, `SOUND_USC_A` and `SOUND_USC_B`, deployment disables
 the microphone `Auto Gain Control` switch and stores the ALSA mixer state. A
