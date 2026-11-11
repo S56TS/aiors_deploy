@@ -67,19 +67,21 @@ install_verification_dependencies() {
   # Keep every installed WireGuard version during bootstrap dependencies.
   local records rc package version status
   local constraints=()
+  # Preserve empty Version fields on known-but-not-installed packages.
   if records="$(LC_ALL=C dpkg-query -W \
-      -f='${binary:Package}\t${Version}\t${db:Status-Status}\n' \
+      -f='${binary:Package}|${Version}|${db:Status-Status}\n' \
       'wireguard*' 2>/dev/null)"; then
     :
   else
     rc=$?
     [[ "$rc" == "1" ]] || die "Could not inspect installed WireGuard packages"
   fi
-  while IFS=$'\t' read -r package version status; do
-    [[ -n "$version" ]] || continue
+  while IFS='|' read -r package version status; do
     [[ "$package" == wireguard || "$package" == wireguard-* || "$package" == wireguard:* ]] || continue
     case "$status" in
-      installed) ;;
+      installed)
+        [[ -n "$version" ]] || die "Cannot protect installed WireGuard package $package: missing version"
+        ;;
       config-files|not-installed|'') continue ;;
       *) die "WireGuard package $package is $status; finish repairing it before deployment" ;;
     esac
