@@ -69,6 +69,7 @@ for filename in \
   "$aiors_repo/etc/systemd/system/aiors-mqtt-agent.service" \
   "$aiors_repo/etc/udev/rules.d/99-aiors.rules" \
   "$aiors_repo/scripts/install_aiors_svxlink.sh" \
+  "$aiors_repo/scripts/wireguard-install-policy.sh" \
   "$aiors_repo/scripts/install_prebuilt_payload.sh" \
   "$svxlink_manifest" \
   "$svxlink_prebuilt/SHA256SUMS" \
@@ -178,6 +179,8 @@ install -m 0644 "$aiors_repo/etc/udev/rules.d/99-aiors.rules" \
   "$aiors_payload/etc/udev/rules.d/99-aiors.rules"
 install -m 0755 "$aiors_repo/scripts/install_aiors_svxlink.sh" \
   "$aiors_payload/scripts/install_aiors_svxlink.sh"
+install -m 0644 "$aiors_repo/scripts/wireguard-install-policy.sh" \
+  "$aiors_payload/scripts/wireguard-install-policy.sh"
 install -m 0755 "$aiors_repo/scripts/install_prebuilt_payload.sh" \
   "$aiors_payload/scripts/install_prebuilt_payload.sh"
 tar --sort=name --mtime='@0' --numeric-owner --owner=0 --group=0 \

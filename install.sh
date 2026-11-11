@@ -6,6 +6,7 @@ DEPLOY_VERSION="${DEPLOY_VERSION:-latest}"
 DEPLOY_ASSET_DIR="${DEPLOY_ASSET_DIR:-}"
 VERIFY_ONLY="${VERIFY_ONLY:-0}"
 ALLOW_DIRTY_RELEASE="${ALLOW_DIRTY_RELEASE:-0}"
+UPGRADE_WIREGUARD="${UPGRADE_WIREGUARD:-ask}"
 MINISIGN_PUBLIC_KEY='RWTNHcQlVd9btokgGZNKfJGPa8ftkBd3N4Z1gYjhjQejcPRCPBDn0Grh'
 
 WORK_DIR=""
@@ -43,6 +44,11 @@ archive_is_safe() {
   fi
 }
 
+case "$UPGRADE_WIREGUARD" in
+  ask|0|1) ;;
+  *) die "UPGRADE_WIREGUARD must be ask, 0, or 1" ;;
+esac
+
 case "$DEPLOY_VERSION" in
   ''|*[!A-Za-z0-9._-]*)
     die "invalid DEPLOY_VERSION: $DEPLOY_VERSION"
@@ -56,6 +62,33 @@ else
   SUDO=(sudo)
 fi
 
+install_verification_dependencies() {
+  # The signed payload (and its interactive policy) is not available yet.
+  # Keep every installed WireGuard version during bootstrap dependencies.
+  local records rc package version status
+  local constraints=()
+  if records="$(LC_ALL=C dpkg-query -W \
+      -f='${binary:Package}\t${Version}\t${db:Status-Status}\n' \
+      'wireguard*' 2>/dev/null)"; then
+    :
+  else
+    rc=$?
+    [[ "$rc" == "1" ]] || die "Could not inspect installed WireGuard packages"
+  fi
+  while IFS=$'\t' read -r package version status; do
+    [[ -n "$version" ]] || continue
+    [[ "$package" == wireguard || "$package" == wireguard-* || "$package" == wireguard:* ]] || continue
+    case "$status" in
+      installed) ;;
+      config-files|not-installed|'') continue ;;
+      *) die "WireGuard package $package is $status; finish repairing it before deployment" ;;
+    esac
+    constraints+=("${package}=${version}")
+  done <<< "$records"
+  "${SUDO[@]}" apt-get --no-remove install -y \
+    ca-certificates wget tar minisign "${constraints[@]}"
+}
+
 missing_tools=0
 for tool in minisign sha256sum tar wget; do
   command -v "$tool" >/dev/null || missing_tools=1
@@ -63,7 +96,7 @@ done
 if [[ "$missing_tools" == "1" || ! -r /etc/ssl/certs/ca-certificates.crt ]]; then
   log "Installing release verification tools"
   "${SUDO[@]}" apt-get update
-  "${SUDO[@]}" apt-get install -y ca-certificates wget tar minisign
+  install_verification_dependencies
 fi
 for tool in minisign sha256sum tar wget; do
   command -v "$tool" >/dev/null || die "missing required tool after package installation: $tool"
@@ -170,6 +203,7 @@ cp "$manifest" "$payload_dir/deployment-manifest.env"
 
 log "Running AIORS and SvxLink binary deployment"
 RELEASE_PAYLOAD_DIR="$payload_dir" \
+UPGRADE_WIREGUARD="$UPGRADE_WIREGUARD" \
 AIORS_HW_VERSION="${AIORS_HW_VERSION:-}" \
 FRN_CONFIG_PATH="${FRN_CONFIG_PATH:-}" \
 MQTT_CONFIG_PATH="${MQTT_CONFIG_PATH:-}" \

@@ -57,6 +57,39 @@ The integration installer also installs `wireguard-tools` (`wg` and
 `wg-quick`). It does not create VPN keys, install a tunnel configuration, or
 enable a WireGuard interface automatically.
 
+If WireGuard tools are already installed and a newer version is available,
+the updated integration installer asks whether to upgrade them, defaulting
+to No. Enter or a negative answer keeps the installed version. Without a
+controlling terminal, it keeps the installed version automatically. Missing
+WireGuard tools are installed without a prompt. Existing APT holds are
+respected.
+
+For an unattended deployment, set `UPGRADE_WIREGUARD=0` to keep installed tools
+or `UPGRADE_WIREGUARD=1` to explicitly permit an available upgrade. The default
+is `ask`. An approved upgrade may interrupt the VPN connection.
+
+Verification-tool installation preserves installed WireGuard versions before
+the signed payload is available. The updated integration installer also
+constrains installed WireGuard packages in every dependency transaction and
+refuses package removals. A conflicting dependency plan fails instead of
+changing those protected packages. The policy creates no permanent APT hold
+and makes no direct changes to VPN configurations, keys, or tunnel service
+settings. Other package or hardware changes can still affect connectivity.
+
+Rebuild the deployment release to include the updated installer and its
+`scripts/wireguard-install-policy.sh` helper. This policy does not change the
+behaviour of previously built release archives.
+
+The updated installer verifies CM108 identity before audio re-enumeration and
+refuses to reset a USB device containing a network interface. Physical port
+power cycling is blocked when Ethernet shares the hub; this also applies to
+the updated daemon's recovery and CLI power-off commands. USB udev events are
+limited to the audio devices and exact hub. aiorsd feeds the SYSTEM hardware
+watchdog during initialization for at most 90 seconds before handing control
+to its runtime loop. These protections require a newly packaged release with
+the rebuilt daemon; they do not remove risks from other package hooks or the
+interval while aiorsd is stopped.
+
 For both stable USB cards, `SOUND_USC_A` and `SOUND_USC_B`, deployment disables
 the microphone `Auto Gain Control` switch and stores the ALSA mixer state. A
 bounded boot service reapplies the setting before SvxLink starts and does not
