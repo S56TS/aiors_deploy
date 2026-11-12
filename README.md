@@ -8,9 +8,11 @@ See [Cross-Compile And Pi Installation](docs/CROSS_COMPILE_AND_PI_INSTALL.md)
 for the complete workflow after source changes and for fresh Raspberry Pi OS
 deployment.
 
-See [MQTT Telemetry And Server Setup](docs/MQTT_TELEMETRY_AND_SERVER.md) for
-the optional isolated telemetry agent, topic/payload contract, private broker
-configuration, remote-command safety model, and FRN server setup.
+See [MQTT Telemetry And Server Setup](https://github.com/S56TS/svxlink/blob/integrate/upstream-aiors/docs/MQTT_TELEMETRY_AND_SERVER.md) in the SvxLink source repository
+for the optional isolated telemetry agent, topic/payload contract, private broker
+configuration, remote-command safety model, and FRN server setup. Source-repository
+access is required. That Markdown file is the maintained guide; its
+[Word version](https://github.com/S56TS/svxlink/blob/integrate/upstream-aiors/docs/MQTT_TELEMETRY_AND_SERVER.docx) is generated from it.
 
 ## Release Assets
 

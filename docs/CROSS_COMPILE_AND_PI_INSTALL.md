@@ -439,7 +439,8 @@ preserved and the new template is written to:
 The optional `aiors-mqtt-agent` binary is updated at the same time. Existing
 `/etc/aiors-mqtt/agent.conf` and credential files are preserved. MQTT remains
 disabled until `[agent] ENABLED=1`; see
-[MQTT Telemetry And Server Setup](MQTT_TELEMETRY_AND_SERVER.md).
+[MQTT Telemetry And Server Setup](https://github.com/S56TS/svxlink/blob/integrate/upstream-aiors/docs/MQTT_TELEMETRY_AND_SERVER.md) in the SvxLink source repository
+(source-repository access required). That is the maintained MQTT guide.
 
 If payload validation fails, newly installed payload files are removed and the
 previous files are restored from `/var/backups/aiors-svxlink/`.
