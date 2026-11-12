@@ -101,6 +101,13 @@ the microphone `Auto Gain Control` switch and stores the ALSA mixer state. A
 bounded boot service reapplies the setting before SvxLink starts and does not
 block the radio service when a USB card is absent.
 
+The diagnostics release supports one or two named Simplex/Repeater logics with
+shared AIORS hardware measurements. Set an explicit `[agent] NODE_ID` before
+enabling two logics. MQTT adds named `logics` blocks on the existing topics;
+`STATS_PRIMARY_LOGIC` pins legacy flat metric aliases. The installer validates
+the MQTT config as its service user before stopping services, and read/parse
+errors no longer silently disable MQTT. See the updated MQTT and FRN manuals.
+
 The default AIORS service/login account is `aiors`, and it must already exist
 on the Pi. An existing installation with another account can set
 `AIORS_USER=<existing-user>` when invoking `install.sh`.

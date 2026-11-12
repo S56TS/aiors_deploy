@@ -1,7 +1,7 @@
 # AIORS + SvxLink MQTT Telemetry
 
 Reviewed against the local AIORS, SvxLink, and deployment source on
-3 November 2026. MQTT envelope schema: 1; SvxLink snapshot schema: 3;
+12 November 2026. MQTT envelope schema: 1; SvxLink snapshot schema: 4;
 current AIORS diagnostics schema: 5, with schema 4 compatibility.
 This guide describes the source and deployment templates. Confirm the installed
 binaries and active configuration when checking a running node.
@@ -59,6 +59,225 @@ are percent encoded, so `/` becomes `%2F`, `+` becomes `%2B`, and `#` becomes
 is also uppercased. Even with an override, the SvxLink configuration must be
 readable and contain `[GLOBAL] LOGICS`; the `logic` field names its first entry.
 
+## One or two independent logics
+
+One MQTT node and one agent report a shared AIORS installation, with a named block for each
+configured SvxLink logic. Names are arbitrary section names, not hardcoded `RepeaterLogic`
+or `RepeaterLogic2`. Any combination of one/two Simplex and Repeater instances is supported.
+The maximum is two. Logic names are case-sensitive and their original spelling is retained.
+
+Shared `metrics` contain Linux boot/uptime, SvxLink process uptime/version/revision,
+aiorsd uptime/version/revision and hardware measurements, plus MQTT agent uptime/version.
+AIORS PSU/energy/environment and physical AI/BI/AE/BE/CM108 diagnostics are sampled once.
+No hardware values are duplicated in the individual logic blocks.
+
+The existing `.../<node>/telemetry` topic and envelope `schema=1` are retained. A schema-4
+snapshot adds a `logics` JSON object. Example (other envelope fields and metrics omitted):
+
+```json
+{
+  "schema": 1,
+  "node_id": "327CRMCE0",
+  "logic": "LocalRepeater",
+  "primary_logic": "LocalRepeater",
+  "logic_statistics_scope": "per_logic",
+  "metrics": {
+    "stats_schema": 4,
+    "svxlink_uptime_s": 1234,
+    "aiors_radio_ai_status": "ready",
+    "mqtt_agent_uptime_s": 1200
+  },
+  "logics": {
+    "LocalRepeater": {
+      "type": "Repeater",
+      "state": "ready",
+      "callsign": "327CRMCE0",
+      "rx": "Rx1",
+      "tx": "Tx2",
+      "frn_enabled": true,
+      "frn_users": 10,
+      "rf_tx_evt_1h": 12
+    },
+    "LocalSimplex": {
+      "type": "Simplex",
+      "state": "ready",
+      "callsign": "327CRMCE0-2",
+      "rx": "Rx2",
+      "tx": "Tx1",
+      "frn_enabled": false,
+      "frn_users": null,
+      "rf_tx_evt_1h": 7
+    }
+  }
+}
+```
+
+One configured logic produces one object, without an empty second slot. A configured failed
+logic stays present with `state=failed` and null live/statistical values. `counter_epoch_unix_s`
+remains available as its historical baseline. If an FRN module is not loaded, `frn_enabled`
+is false and `frn_*`/`cmd_*` values in that logic block are null, not faults or zero activity.
+
+### Identity, routing and compatibility
+
+Keep the existing `[agent] NODE_ID` (for example `327CRMCE0`) when adding another logic.
+Two LOGICS entries require this explicit override. A single logic may still derive the node
+ID from its callsign. No second broker username or service is needed.
+
+Optional `[GLOBAL] STATS_PRIMARY_LOGIC=LocalRepeater` pins the temporary flat `frn_*`,
+`rf_*`, squelch and `cmd_*` compatibility aliases under `metrics`. The first configured logic
+is the default. These aliases represent only that primary logic, never combined activity.
+New consumers should read logic statistics exclusively from `logics[section_name]`, so they
+do not count both the scoped value and its compatibility alias. The top-level `logic` field
+is retained as the primary-logic label. Shared hardware stays in `metrics`.
+
+`rx`/`tx` name the SvxLink RX/TX configuration sections. They do not imply physical channel
+A/B or internal/external radio locations: audio/COS/PTT routing remains common hardware state.
+The order of LOGICS does not identify or own historical counters. Reordering the list keeps
+each named logic's totals; renaming a section creates a new counter identity.
+
+Older snapshots without logic blocks are still published with
+`logic_statistics_scope=legacy_unseparated` and no `logics` object. Do not label their mixed
+statistics as either new logic. Queued older messages remain deliverable in their original
+format; consumers must accept both shapes during an upgrade.
+
+### Scoped events and queue history
+
+Hardware change events carry `scope=node`. Logic events carry `scope=logic` and the actual
+`logic` name. Link up/down totals, logic readiness and FRN availability have independent
+change baselines keyed by name. Reordering snapshot slots does not generate false changes.
+Legacy unseparated FRN events use `scope=legacy`. Primary aliases do not generate duplicate
+FRN events when scoped blocks are present. A first observation establishes a baseline.
+
+The existing single SQLite queue, node-wide sequence and broker status remain shared.
+Retained telemetry describes the full currently configured set; removing a logic does not
+leave a stale retained per-logic topic. Publication cadence and hardware sampling intervals
+remain the existing GLOBAL settings.
+
+### Persistence and server changes
+
+Shared hardware totals, including Wh/Ah and physical radio faults, continue under their
+existing keys. Persistent logic totals use schema 2 and keys of the form
+`logic.<percent-encoded-section-name>.<metric>`. Old mixed totals are retained under `legacy.*`
+and flagged by `legacy_logic_totals_available`. They cannot be divided retrospectively and
+are not copied into either logic. Per-logic epochs identify the new baseline. Rolling
+one-hour windows start fresh on process restart; lifetime counters are restored by name.
+
+Store scoped statistics by node ID plus logic name and counter epoch. Dashboards should
+discover available logic names rather than assume two fixed names. Keep process/hardware
+cards node-wide and display separate logic panels. A failed logic and an unconfigured logic
+must be displayed differently. Avoid summing simultaneous logic duty cycles as node-wide
+wall-clock duty.
+
+The broker ACL example needs no new topic paths for this extension. The receiving server
+does need ingestion/display support for `logics` and scoped events; test strict JSON
+consumers before deployment. MQTT subscriptions select topics, not individual JSON fields.
+The agent publishes complete telemetry; consumers select the fields they store/display.
+
+Install the matching SvxLink and MQTT agent builds together; the older 512-field agent cannot consume the expanded two-logic snapshot.
+
+The flat snapshot parser is bounded at 1,024 metrics and a 1 MiB input file. The regression
+two-logic snapshot currently has 551 fields including primary aliases. AIORS input remains
+diagnostics schema 5; unavailable physical-radio data remains node-wide null/na as before.
+
+### Installer validation
+
+The installer reads configuration using the new agent's `--check-config` parser under the
+`aiors-mqtt` service account. Boolean forms such as true/yes/on are accepted consistently.
+Configuration is validated before stopping services for binary replacement. A validation
+failure is an error, never implicitly ENABLED=0. Only an explicitly disabled configuration
+disables the unit. A later failed upgrade attempts to restart a previously running agent.
+
+### Per-logic field reference
+
+These fields occur inside each `logics[section_name]` object. Shared AIORS fields do not.
+Numbers retain the existing typing rules below; metadata strings remain strings, and
+`frn_enabled` is a JSON boolean. Failed/inapplicable values are null as described above.
+
+| Field | Meaning |
+|---|---|
+| `type` | Configured logic TYPE, for example Simplex or Repeater. |
+| `callsign` | The configured callsign for this logic. |
+| `rx` | RX configuration section name. |
+| `tx` | TX configuration section name. |
+| `state` | configured, ready or failed. |
+| `frn_enabled` | Whether an FRN module is loaded for this logic. |
+| `frn_link_up_evt_1h` | Number of FRN link-up events in the last hour. |
+| `frn_link_down_evt_1h` | Number of FRN link-down events in the last hour. |
+| `frn_link_up_total` | Cumulative count of observed FRN link-up events. |
+| `frn_link_down_total` | Cumulative count of observed FRN link-down events. |
+| `frn_link_up_age_s` | Seconds since the most recent link-up event; -1 if none observed in this process. |
+| `frn_link_down_age_s` | Seconds since the most recent link-down event; -1 if none observed in this process. |
+| `frn_rx_age_s` | Seconds since recorded FRN receive activity, including client-list updates as well as voice data. Not exclusively time since speech; -1 if none. |
+| `frn_tx_age_s` | Seconds since recorded outgoing FRN voice activity; -1 if none. |
+| `frn_users` | Current count of distinct entries in the FRN client list; not necessarily distinct people. |
+| `frn_users_peak_1h` | Tracked peak client count. The implementation resets it roughly hourly; it is not an exact sliding-hour maximum. |
+| `frn_users_unique_1h` | Count of distinct FRN client-list identities seen during the last hour. |
+| `frn_link_up_1h` | Compatibility alias of frn_link_up_evt_1h; same count, do not add them together. |
+| `frn_link_down_1h` | Compatibility alias of frn_link_down_evt_1h; same count, do not add them together. |
+| `frn_user_join_1h` | Count of entries added between observed FRN client lists in the last hour. |
+| `frn_user_leave_1h` | Count of entries removed between observed FRN client lists in the last hour. |
+| `frn_tx_evt_1h` | frn tx evt 1h; scoped to this logic. |
+| `frn_tx_s_1h` | frn tx s 1h; scoped to this logic. |
+| `frn_tx_min_s_1h` | frn tx min s 1h; scoped to this logic. |
+| `frn_tx_max_s_1h` | frn tx max s 1h; scoped to this logic. |
+| `frn_tx_bytes_1h` | Outgoing GSM voice payload bytes in the last hour; excludes FRN control commands and TCP/IP overhead. |
+| `frn_tx_duty_1h` | Outgoing FRN voice duration / 3600 × 100, clipped to 0–100%; 10 means 10%. |
+| `frn_rx_evt_1h` | frn rx evt 1h; scoped to this logic. |
+| `frn_rx_s_1h` | frn rx s 1h; scoped to this logic. |
+| `frn_rx_min_s_1h` | frn rx min s 1h; scoped to this logic. |
+| `frn_rx_max_s_1h` | frn rx max s 1h; scoped to this logic. |
+| `frn_rx_bytes_1h` | Received voice packet bytes including its FRN client index; excludes general client lists and TCP/IP overhead. Not exactly the same accounting as TX. |
+| `rf_tx_evt_1h` | rf tx evt 1h; scoped to this logic. |
+| `rf_tx_s_1h` | rf tx s 1h; scoped to this logic. |
+| `rf_tx_min_s_1h` | rf tx min s 1h; scoped to this logic. |
+| `rf_tx_max_s_1h` | rf tx max s 1h; scoped to this logic. |
+| `rf_tx_hours_total` | rf tx hours total; scoped to this logic. |
+| `rf_tx_duty_1h` | rf tx duty 1h; scoped to this logic. |
+| `rf_rx_evt_1h` | rf rx evt 1h; scoped to this logic. |
+| `rf_rx_s_1h` | rf rx s 1h; scoped to this logic. |
+| `rf_rx_min_s_1h` | rf rx min s 1h; scoped to this logic. |
+| `rf_rx_max_s_1h` | rf rx max s 1h; scoped to this logic. |
+| `rf_rx_hours_total` | rf rx hours total; scoped to this logic. |
+| `rf_rx_duty_1h` | rf rx duty 1h; scoped to this logic. |
+| `cmd_ok_1h` | Accepted FRN RunCmd requests in the last hour; count. Acceptance does not guarantee the external command exited successfully. |
+| `cmd_rej_1h` | Rejected RunCmd requests in the last hour; count. |
+| `cmd_authfail_1h` | RunCmd authentication failures in the last hour; count. |
+| `cmd_bc_attempt_1h` | Broadcast/non-private RunCmd attempts that were ignored; count. |
+| `cmd_avg_ms_1h` | Mean measured external-command elapsed time in milliseconds; integer average, 0 if no timings. |
+| `cmd_max_ms_1h` | Maximum measured external-command elapsed time in milliseconds; 0 if no timings. |
+| `sql_evt_1h` | sql evt 1h; scoped to this logic. |
+| `sql_s_1h` | sql s 1h; scoped to this logic. |
+| `rf_tx_active` | Current RF transmit activity. |
+| `rf_rx_active` | Current RF receive activity. |
+| `sql_active` | Current open-squelch activity. |
+| `frn_tx_active` | Current FRN transmit activity. |
+| `frn_rx_active` | Current FRN receive activity. |
+| `frn_link_up` | Current observed FRN connection state. |
+| `counter_epoch_unix_s` | Unix-second baseline for these persistent logic counters. |
+| `rf_tx_s_total` | rf tx s total; scoped to this logic. |
+| `rf_tx_evt_total` | rf tx evt total; scoped to this logic. |
+| `rf_rx_s_total` | rf rx s total; scoped to this logic. |
+| `rf_rx_evt_total` | rf rx evt total; scoped to this logic. |
+| `sq_open_s_total` | sq open s total; scoped to this logic. |
+| `sq_evt_total` | sq evt total; scoped to this logic. |
+| `frn_tx_s_total` | frn tx s total; scoped to this logic. |
+| `frn_tx_evt_total` | frn tx evt total; scoped to this logic. |
+| `frn_rx_s_total` | frn rx s total; scoped to this logic. |
+| `frn_rx_evt_total` | frn rx evt total; scoped to this logic. |
+| `cmd_ok_total` | cmd ok total; scoped to this logic. |
+| `cmd_rej_total` | cmd rej total; scoped to this logic. |
+| `cmd_authfail_total` | cmd authfail total; scoped to this logic. |
+| `cmd_bc_attempt_total` | cmd bc attempt total; scoped to this logic. |
+| `cmd_sum_ms_total` | cmd sum ms total; scoped to this logic. |
+| `cmd_max_ms_total` | cmd max ms total; scoped to this logic. |
+| `frn_tx_bytes_total` | frn tx bytes total; scoped to this logic. |
+| `frn_rx_bytes_total` | frn rx bytes total; scoped to this logic. |
+| `cmd_count_ms_total` | cmd count ms total; scoped to this logic. |
+
+The FRN text interface now uses `get diagnostics`, `get diagnostics node`,
+`get diagnostics logic [name]`, and `get diagnostics all`. See the updated FRN RunCmd manual.
+The old FRN `get stats` syntax is deliberately not backward compatible.
+
 ## Topics
 
 For `CALLSIGN=S5RPTAIORS`, the agent uses:
@@ -100,7 +319,7 @@ identifiers are illustrative:
   "logic": "RepeaterLogic",
   "source": "/var/lib/svxlink/svxstats_snapshot.txt",
   "metrics": {
-    "stats_schema": 3,
+    "stats_schema": 4,
     "aiors_diagnostics_version": "5",
     "aiors_software_version": "4f165e5-dirty",
     "aiors_software_revision": "4f165e5-dirty",
@@ -221,8 +440,8 @@ delivery. Store server receipt time separately.
 ## Reporting variable reference
 
 Checked on 7 November 2026 against the MQTT agent, AIORS diagnostics code and
-SvxLink snapshot formatter. This reference covers all 361 metric names in the
-current snapshot, plus the MQTT message fields. Older installed binaries can
+SvxLink snapshot formatter. This reference covers the baseline 361 metric names in the
+shared snapshot and legacy-primary aliases, plus the MQTT message fields. Per-logic additions are listed in the two-logic section. Older installed binaries can
 report fewer fields. Related names are grouped using placeholders; each allowed
 replacement is stated beside its table.
 
@@ -272,7 +491,7 @@ JSON true/false boolean.
 | `boot_id` | Linux boot UUID. It changes on a Pi reboot; it is not a reboot counter. |
 | `sequence` | Persistent message sequence number for telemetry, events and command responses. Status messages do not contain it. Gaps do not represent a duration. |
 | `published_at` | UTC ISO 8601 timestamp ending in Z, assigned when this payload is created, before queued delivery. It is not necessarily sensor or server-receipt time. |
-| `logic` | Telemetry only: SvxLink logic name associated with the selected snapshot. |
+| `logic` | Telemetry only: Primary logic used for the temporary flat metric aliases; the `logics` object contains all scoped logic statistics. |
 | `source` | Telemetry only: local snapshot file path, normally /var/lib/svxlink/svxstats_snapshot.txt. |
 | `metrics` | Telemetry only: object holding the reporting variables described below. |
 
@@ -665,7 +884,7 @@ The agent has no hardware suffix. Commit source changes before release builds;
 the commit alone does not identify all changes in a dirty build.
 
 MQTT envelope `schema=1`, topic prefix `frn/aiors/v1`, and SvxLink snapshot
-`stats_schema=3` are unchanged. Current AIORS diagnostics use schema 5; the
+`stats_schema=4` includes the named logic blocks and retains the legacy primary aliases. Current AIORS diagnostics use schema 5; the
 updated SvxLink reader also supports schema 4. MQTT exports the current value
 as `"aiors_diagnostics_version": "5"` because keys containing `version` remain
 strings. Adding the physical radio fields does not change MQTT topics or its
